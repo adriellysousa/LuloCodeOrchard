@@ -1,108 +1,126 @@
-from sklearn.ensemble import RandomForestRegressor
+# Importando bibliotecas necessárias
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import mean_squared_error, r2_score
-import pandas as pd
-import numpy as np
-from sklearn.model_selection import RandomizedSearchCV
-from sklearn.feature_selection import SelectFromModel
-import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+from xgboost import XGBRegressor
 
-# Carregar os dados
-dados = pd.read_excel(r'C:\Users\AdriellyLorenaPalhaS\Documents\TCC2\dataset_preditivo\output\dados_tratados.xlsx')
+# Função para carregar os dados
+def carregar_dados(caminho):
+    return pd.read_excel(caminho)
 
-# Definindo a variável alvo e as características
-X = dados[['Diametro do dossel', 'Altura da planta', 'Green', 'Red', 'NIR', 'Red_edge', 'CLG', 'NDVI', 'Numero de folhas', 'Ramos flores', 'Flores por ramo', 'Frutos por ramo']]  # Características
-y = dados['Total de frutos']  # Variável alvo
-# Dividindo os dados em conjuntos de treino e teste
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+# Função para tratamento de valores ausentes
+def tratar_valores_ausentes(dados, variaveis_de_interesse):
+    return dados[variaveis_de_interesse].fillna(dados[variaveis_de_interesse].mean())
 
-# Normalizando os dados
-scaler = StandardScaler()
-X_train_scaled = scaler.fit_transform(X_train)
-X_test_scaled = scaler.transform(X_test)
+# Função para visualização da distribuição da variável alvo e mapa de calor de correlações
+def visualizar_dados(dados):
+    plt.figure(figsize=(12, 6))
+    sns.histplot(dados['Total de frutos'], kde=True, bins=30, color="skyblue")
+    plt.title('Distribuição do Total de Frutos')
+    plt.xlabel('Total de Frutos')
+    plt.ylabel('Frequência')
+    plt.show()
 
-# Construindo e treinando o modelo Random Forest
-model = RandomForestRegressor(n_estimators=100, random_state=42)
-model.fit(X_train_scaled, y_train)
+    plt.figure(figsize=(12, 10))
+    sns.heatmap(dados.corr(), annot=True, cmap='coolwarm', fmt=".2f", linewidths=.5)
+    plt.title('Mapa de Calor da Matriz de Correlação')
+    plt.show()
 
-# Avaliando o desempenho do modelo no conjunto de treinamento
-y_pred_train = model.predict(X_train_scaled)
-r2_train = r2_score(y_train, y_pred_train)
-rmse_train = np.sqrt(mean_squared_error(y_train, y_pred_train))
-print("Desempenho no Conjunto de Treinamento:")
-print("R² (Coeficiente de Determinação):", r2_train)
-print("RMSE (Raiz do Erro Quadrático Médio):", rmse_train)
+# Função para padronização dos dados
+def padronizar_dados(X):
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    return X_scaled, scaler
 
-# Avaliando o desempenho do modelo no conjunto de teste
-y_pred_test = model.predict(X_test_scaled)
-r2_test = r2_score(y_test, y_pred_test)
-rmse_test = np.sqrt(mean_squared_error(y_test, y_pred_test))
+# Função para aplicar PCA
+def aplicar_pca(X_scaled, n_components=5):
+    pca = PCA(n_components=n_components)
+    X_pca = pca.fit_transform(X_scaled)
+    return X_pca, pca
 
-print("Desempenho no Conjunto de Teste:")
-print("R²:", r2_test)
-print("RMSE:", rmse_test)
-# Preparando o espaço de busca dos hiperparâmetros
-param_distributions = {
-    'n_estimators': [100, 200, 300],
-    'max_depth': [None, 10, 20, 30],
-    'min_samples_split': [2, 5, 10],
-    'min_samples_leaf': [1, 2, 4]
-}
+# Função para ajuste fino e treinamento de modelos
+def ajuste_fino_treinamento(X_train, X_test, y_train, y_test):
+    modelos = {
+        'RandomForestRegressor': {
+            'modelo': RandomForestRegressor(random_state=42),
+            'parametros': {
+                'n_estimators': [100, 200],
+                'max_depth': [None, 10, 20],
+            }
+        },
+        'XGBRegressor': {
+            'modelo': XGBRegressor(random_state=42),
+            'parametros': {
+                'n_estimators': [100, 200],
+                'max_depth': [3, 5],
+                'learning_rate': [0.01, 0.1],
+            }
+        }
+    }
 
-# Inicializando o modelo Random Forest
-rf = RandomForestRegressor(random_state=42)
+    resultados = {}
+    for nome, d in modelos.items():
+        grid_search = GridSearchCV(estimator=d['modelo'], param_grid=d['parametros'], cv=3, scoring='neg_mean_squared_error', verbose=0, n_jobs=-1)
+        grid_search.fit(X_train, y_train)
+        melhor_modelo = grid_search.best_estimator_
+        y_pred_train = melhor_modelo.predict(X_train)
+        y_pred_test = melhor_modelo.predict(X_test)
+        resultados[nome] = {
+            'Melhores Parâmetros': grid_search.best_params_,
+            'R2 Treinamento': r2_score(y_train, y_pred_train),
+            'RMSE Treinamento': np.sqrt(mean_squared_error(y_train, y_pred_train)),
+            'R2 Teste': r2_score(y_test, y_pred_test),
+            'RMSE Teste': np.sqrt(mean_squared_error(y_test, y_pred_test)),
+        }
+    return resultados
 
-# Configurando a busca aleatória com validação cruzada
-random_search = RandomizedSearchCV(estimator=rf, param_distributions=param_distributions, n_iter=100, cv=3, verbose=2, random_state=42, n_jobs=-1)
+# Função principal
+def main():
+    # Caminho do arquivo de dados (ajuste conforme necessário)
+    caminho_dados = r'C:\Users\AdriellyLorenaPalhaS\Documents\TCC2\dataset_preditivo\output\dados_tratados.xlsx'
+    dados = carregar_dados(caminho_dados)
+    
+    # Variáveis de interesse
+    variaveis_de_interesse = [
+        'Diametro do dossel', 'Altura da planta', 'Green', 'Red', 'NIR', 'Red_edge',
+        'NDVI', 'Numero de folhas', 'Ramos flores', 'Flores por ramo', 'Frutos por ramo', 'Total de frutos'
+    ]
+    dados_selecionados = tratar_valores_ausentes(dados, variaveis_de_interesse)
 
-# Ajustando o modelo ao conjunto de treinamento
-random_search.fit(X_train_scaled, y_train)
+    # Visualizações de dados
+    visualizar_dados(dados_selecionados)
 
-# Exibindo os melhores hiperparâmetros encontrados
-print("Melhores Hiperparâmetros:", random_search.best_params_)
+    # Divisão dos dados em conjuntos de treino e teste
+    X = dados_selecionados.drop(['Total de frutos'], axis=1)
+    y = dados_selecionados['Total de frutos']
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    
+    # Padronização dos dados
+    X_train_scaled, scaler = padronizar_dados(X_train)
+    X_test_scaled = scaler.transform(X_test)
+    
+    # Aplicar PCA
+    X_train_pca, pca = aplicar_pca(X_train_scaled)
+    X_test_pca = pca.transform(X_test_scaled)
+    
+    # Ajuste fino e treinamento dos modelos
+    resultados = ajuste_fino_treinamento(X_train_pca, X_test_pca, y_train, y_test)
+    for modelo, metricas in resultados.items():
+        print(f"{modelo}:")
+        print(f"Melhores Parâmetros: {metricas['Melhores Parâmetros']}")
+        print(f"R2 Treinamento: {metricas['R2 Treinamento']}, RMSE Treinamento: {metricas['RMSE Treinamento']}")
+        print(f"R2 Teste: {metricas['R2 Teste']}, RMSE Teste: {metricas['RMSE Teste']}")
+        print('---')
 
-# Selecionando o melhor modelo
-best_rf = random_search.best_estimator_
+if __name__ == '__main__':
+    main()
 
-# Seleção de características baseada na importância das características
-selector = SelectFromModel(best_rf)
-X_train_selected = selector.fit_transform(X_train_scaled, y_train)
-X_test_selected = selector.transform(X_test_scaled)
-
-# Re-treinando o modelo apenas com as características selecionadas
-best_rf.fit(X_train_selected, y_train)
-
-# Avaliação no conjunto de treinamento
-y_pred_train_selected = best_rf.predict(X_train_selected)
-r2_train_selected = r2_score(y_train, y_pred_train_selected)
-rmse_train_selected = np.sqrt(mean_squared_error(y_train, y_pred_train_selected))
-
-print("Desempenho no Conjunto de Treinamento com Características Selecionadas:")
-print("R²:", r2_train_selected)
-print("RMSE:", rmse_train_selected)
-
-# Avaliação no conjunto de teste
-y_pred_test_selected = best_rf.predict(X_test_selected)
-r2_test_selected = r2_score(y_test, y_pred_test_selected)
-rmse_test_selected = np.sqrt(mean_squared_error(y_test, y_pred_test_selected))
-
-print("Desempenho no Conjunto de Teste com Características Selecionadas:")
-print("R²:", r2_test_selected)
-print("RMSE:", rmse_test_selected)
-
-# Visualização dos resultados
-plt.figure(figsize=(10, 5))
-plt.subplot(1, 2, 1)
-plt.bar(['Treino', 'Teste'], [r2_train, r2_test], color=['blue', 'orange'])
-plt.title('Comparação R²')
-plt.ylabel('R²')
-plt.subplot(1, 2, 2)
-plt.bar(['Treino', 'Teste'], [rmse_train, rmse_test], color=['blue', 'orange'])
-plt.title('Comparação RMSE')
-plt.ylabel('RMSE')
-plt.tight_layout()
-plt.show()
 
 
 
