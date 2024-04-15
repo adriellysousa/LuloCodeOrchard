@@ -82,7 +82,7 @@ def ajuste_fino_treinamento(X_train, X_test, y_train, y_test):
 
 # Função principal
 def main():
-    # Caminho do arquivo de dados (ajuste conforme necessário)
+    # Caminho do arquivo de dados 
     caminho_dados = r'C:\Users\AdriellyLorenaPalhaS\Documents\TCC2\dataset_preditivo\output\dados_tratados.xlsx'
     dados = carregar_dados(caminho_dados)
     
@@ -120,6 +120,38 @@ def main():
 
 if __name__ == '__main__':
     main()
+# Definindo os nomes dos modelos e as métricas de desempenho
+modelos = ['RandomForest', 'XGBoost']
+r2_treinamento = [0.92799, 0.90376]
+rmse_treinamento = [0.26456, 0.30584]
+r2_teste = [0.46328, 0.50638]
+rmse_teste = [0.77010, 0.73853]
+
+x = np.arange(len(modelos))  # Posições dos modelos no eixo X
+width = 0.35  # Largura das barras
+
+fig, ax = plt.subplots(2, figsize=(10, 8))  # Criando uma figura com dois subplots (um para R² e outro para RMSE)
+
+# R² Score
+ax[0].bar(x - width/2, r2_treinamento, width, label='Treinamento', color='skyblue')
+ax[0].bar(x + width/2, r2_teste, width, label='Teste', color='orange')
+ax[0].set_ylabel('R²')
+ax[0].set_title('Comparação do R² por Modelo e Conjunto de Dados')
+ax[0].set_xticks(x)
+ax[0].set_xticklabels(modelos)
+ax[0].legend()
+
+# RMSE
+ax[1].bar(x - width/2, rmse_treinamento, width, label='Treinamento', color='skyblue')
+ax[1].bar(x + width/2, rmse_teste, width, label='Teste', color='orange')
+ax[1].set_ylabel('RMSE')
+ax[1].set_title('Comparação do RMSE por Modelo e Conjunto de Dados')
+ax[1].set_xticks(x)
+ax[1].set_xticklabels(modelos)
+ax[1].legend()
+
+fig.tight_layout()  # Ajustando o layout para não haver sobreposição
+plt.show()
 
 
 
