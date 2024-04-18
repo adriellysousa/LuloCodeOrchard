@@ -44,6 +44,54 @@ def aplicar_pca(X_scaled, n_components=5):
     X_pca = pca.fit_transform(X_scaled)
     return X_pca, pca
 
+#Função biplot
+def biplot(score, coeff, labels=None):
+    xs = score[:,0]
+    ys = score[:,1]
+    n = coeff.shape[0]
+    scalex = 1.0 / (xs.max() - xs.min())
+    scaley = 1.0 / (ys.max() - ys.min())
+    plt.figure(figsize=(12, 8))
+    plt.scatter(xs * scalex, ys * scaley, c='blue', s=5)
+    
+    # Cria um dicionário para armazenar a posição do texto e evitar sobreposição
+    text_positions = {}
+    for i in range(n):
+        plt.arrow(0, 0, coeff[i,0], coeff[i,1], color='red', alpha=0.5)
+        if labels is None:
+            label = "Var"+str(i+1)
+        else:
+            label = labels[i]
+
+        # Ajustando a posição do texto para evitar sobreposição
+        text_x = coeff[i,0]* 1.15
+        text_y = coeff[i,1]* 1.15
+        
+        # Se 'Red' ou 'Green', ajuste a posição para evitar sobreposição
+        if label == 'Red':
+            text_x += 0.1
+            text_y += 0.02  # Um pouco mais alto
+        elif label == 'Green':
+            text_x -= 0.1
+            text_y -= 0.02  # Um pouco mais baixo
+        
+        # Armazena a posição do texto para verificar sobreposição
+        text_positions[label] = (text_x, text_y)
+        
+    # Verifica a sobreposição e ajusta as posições
+    for label, (x_pos, y_pos) in text_positions.items():
+        while any(np.sqrt((x_pos - pos[0])**2 + (y_pos - pos[1])**2) < 0.05 for pos in text_positions.values() if pos != (x_pos, y_pos)):
+            x_pos += 0.01
+            y_pos += 0.01
+        
+        plt.text(x_pos, y_pos, label, color='green', ha='center', va='center')
+    
+    plt.xlabel("PC1")
+    plt.ylabel("PC2")
+    plt.title('Biplot')
+    plt.grid(True)
+    plt.show()
+
 # Função para ajuste fino e treinamento de modelos
 def ajuste_fino_treinamento(X_train, X_test, y_train, y_test):
     modelos = {
@@ -109,6 +157,12 @@ def main():
     X_train_pca, pca = aplicar_pca(X_train_scaled)
     X_test_pca = pca.transform(X_test_scaled)
     
+    #Loadings para o biplot
+    loadings = pca.components_.T * np.sqrt(pca.explained_variance_)
+
+    # Chama a função biplot 
+    biplot(X_train_pca, loadings, labels=X.columns.tolist())
+    
     # Ajuste fino e treinamento dos modelos
     resultados = ajuste_fino_treinamento(X_train_pca, X_test_pca, y_train, y_test)
     for modelo, metricas in resultados.items():
@@ -152,7 +206,6 @@ ax[1].legend()
 
 fig.tight_layout()  # Ajustando o layout para não haver sobreposição
 plt.show()
-
 
 
 
